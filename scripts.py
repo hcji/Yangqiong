@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from chemopy.molproperty import GetMolecularProperty
 from chemopy.connectivity import GetConnectivity
 from chemopy.charge import GetCharge
+from cdk.cdk import get_cdk_fingerprints
 
 # load data
 subs = pd.read_excel('data/data1.xlsx')
@@ -30,6 +31,7 @@ rdkfp = [Chem.rdmolops.RDKFingerprint(Chem.MolFromInchi(i)) for i in subs['InChI
 prope = [GetMolecularProperty(Chem.MolFromInchi(i)) for i in subs['InChI']]
 conne = [GetConnectivity(Chem.MolFromInchi(i)) for i in subs['InChI']]
 charg = [GetCharge(Chem.MolFromInchi(i)) for i in subs['InChI']]
+estat = [get_cdk_fingerprints(i, ['estate']) for i in subs['smiles']]
 
 def condition_encoder(conditions):
     encoder = preprocessing.LabelEncoder()
@@ -61,15 +63,19 @@ def dp_to_data(reactants, dps):
 cata_code = condition_encoder(reac['potocatalyst'])
 base_code = condition_encoder(reac['base'])
 solv_code = condition_encoder(reac['solvents'])
+# salt_code = condition_encoder(reac['nickel(II) salts'])
+
 react_maccs = fp_to_data(reac['reactant'], maccs)
 react_rdkfp = fp_to_data(reac['reactant'], rdkfp)
+react_estat = fp_to_data(reac['reactant'], estat)
+
 react_prope = dp_to_data(reac['reactant'], prope)
 react_conne = dp_to_data(reac['reactant'], conne)
 react_charg = dp_to_data(reac['reactant'], charg)
 
 # concatenate all descriptors
 Yield = np.array(reac['yield'])
-Xdata = np.concatenate((cata_code, base_code, solv_code, react_maccs, react_rdkfp, react_prope, react_conne, react_charg), axis=1)
+Xdata = np.concatenate((cata_code, base_code, solv_code, react_maccs, react_rdkfp, react_estat, react_prope, react_conne, react_charg), axis=1)
 
 # split data
 X_train, X_test, y_train, y_test = train_test_split(Xdata, Yield, test_size=0.2)
@@ -84,19 +90,23 @@ X_test = scaler.transform(X_test)
 w = []
 for y in y_train:
     if y == 0:
-        w.append(0.5)
+        w.append(0.4)
     else:
         w.append(1)
-rf_regr = RandomForestRegressor(max_depth=20, n_estimators=500)
+rf_regr = RandomForestRegressor(max_depth=10, n_estimators=500)
 rf_regr.fit(X_train, y_train, np.array(w))
 y_pred = rf_regr.predict(X_test)
+y_trpr = rf_regr.predict(X_train)
 
 # print output
-r2 = r2_score(y_test, y_pred)
-print('r2:' + str(round(r2, 4)))
+r2_train = r2_score(y_train, y_trpr)
+r2_test = r2_score(y_test, y_pred)
+print('r2_train:' + str(round(r2_train, 4)))
+print('r2_test:' + str(round(r2_test, 4)))
 plt.figure(figsize=(6, 6))
-plt.plot(y_test, y_pred, 'bo')
-plt.plot([0, max(y_test) + 2], [0,max(y_test) + 2], color ='red')
+plt.plot(y_test, y_pred, 'bo', color = 'red')
+plt.plot(y_train, y_trpr, 'bo', color = 'blue')
+plt.plot([0, max(Yield) + 2], [0, max(Yield) + 2], color ='black')
 plt.xlabel('yield')
 plt.ylabel('prediction')
 plt.show()
